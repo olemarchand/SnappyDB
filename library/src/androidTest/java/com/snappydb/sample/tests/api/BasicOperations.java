@@ -26,6 +26,7 @@ import com.esotericsoftware.kryo.io.Output;
 import com.snappydb.DB;
 import com.snappydb.DBFactory;
 import com.snappydb.KeyIterator;
+import com.snappydb.KeyNotFoundException;
 import com.snappydb.SnappyDB;
 import com.snappydb.SnappydbException;
 import com.snappydb.sample.tests.api.helper.Book;
@@ -500,10 +501,12 @@ public class BasicOperations extends AndroidTestCase {
     public void testNoKey() throws SnappydbException {
         snappyDB = DBFactory.open(getContext(), dbName);
 
+        final String key = "UNKNOWN_STRING_KEY";
         try {
-            snappyDB.get("UNKNOWN_STRING_KEY");
-            fail("should raise SnappydbException string NotFound");
-        } catch (SnappydbException e) {
+            snappyDB.get(key);
+            fail("should raise KeyNotFoundException");
+        } catch (KeyNotFoundException e) {
+            assertEquals(key, e.getKey());
         }
 
         snappyDB.close();
@@ -514,32 +517,25 @@ public class BasicOperations extends AndroidTestCase {
     public void testKeyExists() throws SnappydbException {
         snappyDB = DBFactory.open(getContext(), dbName);
 
-        boolean exists = snappyDB.exists("UNKNOWN_STRING_KEY");
-        if (exists) fail("key should not exists");
+        assertFalse("key should not exist", snappyDB.exists("UNKNOWN_STRING_KEY"));
 
         snappyDB.put("name", "jack Reacher");
-        exists = snappyDB.exists("name");
-        exists = snappyDB.exists("name");
-        if (!exists) fail("key should nexists");
+        assertTrue("key should exist", snappyDB.exists("name"));
 
-        exists = snappyDB.exists("nam");
-        if (exists) fail("similar key should not exists");
+        assertFalse("similar key should not exists", snappyDB.exists("nam"));
 
         snappyDB.del("name");
-        exists = snappyDB.exists("name");
-        if (exists) fail("deleted key should not exists");
+        assertFalse("deleted key should not exists", snappyDB.exists("name"));
 
         try {
-            exists = snappyDB.exists("");
+            snappyDB.exists("");
             fail("empty key should not be allowed");
-        } catch (SnappydbException e) {
-        }
+        } catch (SnappydbException e) {}
 
         try {
-            exists = snappyDB.exists(null);
+            snappyDB.exists(null);
             fail("null key should not be allowed");
-        } catch (SnappydbException e) {
-        }
+        } catch (SnappydbException e) {}
 
         snappyDB.close();
         snappyDB.destroy();

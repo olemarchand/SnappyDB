@@ -35,15 +35,24 @@ char* databasePath;
 //*   Internal utilities
 //***************************
 
-void throwException(JNIEnv *env, const char* msg) {
-	LOGE("throwException %s", msg);
-	jclass snappydbExceptionClazz = env->FindClass("com/snappydb/SnappydbException");
-	if ( NULL == snappydbExceptionClazz) {
+void throwException(JNIEnv *env, const char* exceptionClass, const char* constructorParam) {
+	jclass exceptionClazz = env->FindClass(exceptionClass);
+	if ( NULL == exceptionClazz ) {
 		// FindClass already threw an exception such as NoClassDefFoundError.
 		env->Throw(env->ExceptionOccurred());
 		return;
 	}
-	 env->ThrowNew(snappydbExceptionClazz, msg);
+	env->ThrowNew(exceptionClazz, constructorParam);
+}
+
+void throwGenericSnappyDbException(JNIEnv *env, const char* msg) {
+	LOGE("throwGenericSnappyDbException %s", msg);
+	throwException(env, "com/snappydb/SnappydbException", msg);
+}
+
+void throwKeyNotFoundException(JNIEnv *env, const char* key) {
+	LOGI("throwKeyNotFoundException %s", key);
+	throwException(env, "com/snappydb/KeyNotFoundException", key);
 }
 
 //***********************
@@ -81,7 +90,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1open(JNIEnv * env,
 	if (isDBopen) {
 		if (NULL != databasePath && 0 != strcmp(databasePath, path)) {
 			// Trying to open different db
-			throwException(env, "Your database is still open, please close it before");
+			throwGenericSnappyDbException(env, "Your database is still open, please close it before");
 		} else {
 			LOGI("database was already open %s", path);
 		}
@@ -100,7 +109,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1open(JNIEnv * env,
 		if ((databasePath = strdup(path)) != NULL) {
 			env->ReleaseStringUTFChars(dbpath, path);
 		} else {
-			throwException(env, "OutOfMemory when saving the database name");
+			throwGenericSnappyDbException(env, "OutOfMemory when saving the database name");
 		}
 
 	} else {
@@ -109,7 +118,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1open(JNIEnv * env,
 		free(databasePath);
 		databasePath = NULL;
 		std::string err("Failed to open/create database: " + status.ToString());
-		throwException (env, err.c_str());
+		throwGenericSnappyDbException (env, err.c_str());
 	}
 }
 
@@ -125,10 +134,9 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1close(JNIEnv *env,
 		databasePath = NULL;
 
 	} else {
-		throwException (env, "Database was already closed");
+		throwGenericSnappyDbException (env, "Database was already closed");
 	}
 }
-
 
 JNIEXPORT jboolean JNICALL Java_com_snappydb_internal_DBImpl__1_1isOpen
   (JNIEnv * env, jobject thiz) {
@@ -168,7 +176,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1destroy(
 	} else {
 		isDBopen = false;
 		std::string err("Failed to destroy database: " + status.ToString());
-		throwException (env, err.c_str());
+		throwGenericSnappyDbException (env, err.c_str());
 	}
 }
 
@@ -182,7 +190,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1del(JNIEnv *env,
 	LOGI("Deleting entry");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -196,7 +204,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1del(JNIEnv *env,
 
 	} else {
 		std::string err("Failed to delete: " + status.ToString());
-		throwException (env, err.c_str());
+		throwGenericSnappyDbException (env, err.c_str());
 	}
 }
 
@@ -206,7 +214,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1put__Ljava_lang_Str
 	LOGI("Putting a String ");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -222,7 +230,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1put__Ljava_lang_Str
 
 	} else {
 		std::string err("Failed to put a String: " + status.ToString());
-		throwException (env, err.c_str());
+		throwGenericSnappyDbException (env, err.c_str());
 
 	}
 }
@@ -233,7 +241,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1put__Ljava_lang_Str
 	LOGI("Putting a Serializable ");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -241,7 +249,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1put__Ljava_lang_Str
 	jbyte* data =  (jbyte*)env->GetPrimitiveArrayCritical(arr, 0);
 	if (data == NULL) {
 	    /* out of memory exception thrown */
-		throwException(env, "OutOfMemory when trying to get bytes array for Serializable");
+		throwGenericSnappyDbException(env, "OutOfMemory when trying to get bytes array for Serializable");
 		return;
 	}
 
@@ -258,7 +266,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1put__Ljava_lang_Str
 
 	} else {
 		std::string err("Failed to put a Serializable: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 	}
 }
 
@@ -268,7 +276,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putLong(
 	LOGI("Putting a long ");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -284,7 +292,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putLong(
 
 	} else {
 		std::string err("Failed to put a long: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 	}
 }
 
@@ -294,7 +302,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putInt(JNIEnv *env,
 	LOGI("Putting an int");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -310,7 +318,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putInt(JNIEnv *env,
 
 	} else {
 		std::string err("Failed to put an int: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 	}
 }
 
@@ -320,7 +328,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putShort(
 	LOGI("Putting a short");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -336,7 +344,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putShort(
 
 	} else {
 		std::string err("Failed to put a short: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 	}
 }
 
@@ -346,7 +354,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putBoolean(
 	LOGI("Putting a boolean");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -362,7 +370,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putBoolean(
 
 	} else {
 		std::string err("Failed to put a boolean: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 	}
 }
 
@@ -372,7 +380,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putDouble(
 	LOGI("Putting a double");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 	const char* key(env->GetStringUTFChars(jKey, 0));
@@ -389,7 +397,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putDouble(
 
 	} else {
 		std::string err("Failed to put a double: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 
 	}
 }
@@ -400,7 +408,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putFloat(
 	LOGI("Putting a float");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return;
 	}
 
@@ -418,7 +426,7 @@ JNIEXPORT void JNICALL Java_com_snappydb_internal_DBImpl__1_1putFloat(
 
 	} else {
 		std::string err("Failed to put a float: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 	}
 }
 
@@ -432,7 +440,7 @@ JNIEXPORT jlong JNICALL Java_com_snappydb_internal_DBImpl__1_1getLong(JNIEnv *en
 	LOGI("Getting a long");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -459,13 +467,15 @@ JNIEXPORT jlong JNICALL Java_com_snappydb_internal_DBImpl__1_1getLong(JNIEnv *en
 			return ret;
 
 		} else {
-			throwException(env, "Failed to get a long");
+			throwGenericSnappyDbException(env, "Failed to get a long");
 			return NULL;
 		}
-
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get a long: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -476,7 +486,7 @@ JNIEXPORT jint JNICALL Java_com_snappydb_internal_DBImpl__1_1getInt(JNIEnv *env,
 	LOGI("Getting an int");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -500,13 +510,16 @@ JNIEXPORT jint JNICALL Java_com_snappydb_internal_DBImpl__1_1getInt(JNIEnv *env,
 			return ret;
 
 		} else {
-			throwException(env, "Failed to get an int");
+			throwGenericSnappyDbException(env, "Failed to get an int");
 			return NULL;
 		}
 
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get an int: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -517,7 +530,7 @@ JNIEXPORT jdouble JNICALL Java_com_snappydb_internal_DBImpl__1_1getDouble(
 	LOGI("Getting a double");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -527,16 +540,16 @@ JNIEXPORT jdouble JNICALL Java_com_snappydb_internal_DBImpl__1_1getDouble(
 
 	env->ReleaseStringUTFChars(jKey, key);
 
-
-
 	if (status.ok()) {// we can't use data.length() here to make sure of the size of float since it was encoded as string
 		double d = atof(data.c_str());
 		LOGI("Successfully reading a double");
 		return d;
-
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get a double: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -547,7 +560,7 @@ JNIEXPORT jshort JNICALL Java_com_snappydb_internal_DBImpl__1_1getShort(JNIEnv *
 	LOGI("Getting a short");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -567,15 +580,16 @@ JNIEXPORT jshort JNICALL Java_com_snappydb_internal_DBImpl__1_1getShort(JNIEnv *
 			ret = (ret << 8) + bytes[0];
 
 			return ret;
-
 		} else {
-			throwException(env, "Failed to get a short");
+			throwGenericSnappyDbException(env, "Failed to get a short");
 			return NULL;
 		}
-
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get a short: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -586,7 +600,7 @@ JNIEXPORT jboolean JNICALL Java_com_snappydb_internal_DBImpl__1_1getBoolean(
 	LOGI("Getting a boolean");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -600,16 +614,16 @@ JNIEXPORT jboolean JNICALL Java_com_snappydb_internal_DBImpl__1_1getBoolean(
 		if (1 == data.length()) {
 			LOGI("Successfully reading a boolean");
 			return data.data()[0];
-
 		} else {
-			throwException(env, "Failed to get a boolean");
+			throwGenericSnappyDbException(env, "Failed to get a boolean");
 			return NULL;
 		}
-
-
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get a boolean: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -620,7 +634,7 @@ JNIEXPORT jstring JNICALL Java_com_snappydb_internal_DBImpl__1_1get(JNIEnv *env,
 	LOGI("Getting a String");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -635,10 +649,12 @@ JNIEXPORT jstring JNICALL Java_com_snappydb_internal_DBImpl__1_1get(JNIEnv *env,
 		LOGI("Successfully reading a String");
 		const char* re = value.c_str();
 		return env->NewStringUTF(re);
-
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get a String: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -649,7 +665,7 @@ JNIEXPORT jbyteArray JNICALL Java_com_snappydb_internal_DBImpl__1_1getBytes(
 	LOGI("Getting a byte array");
 
 	if (!isDBopen) {
-		throwException(env, "database is not open");
+		throwGenericSnappyDbException(env, "database is not open");
 		return NULL;
 	}
 
@@ -669,9 +685,12 @@ JNIEXPORT jbyteArray JNICALL Java_com_snappydb_internal_DBImpl__1_1getBytes(
 		LOGI("Successfully reading a byte array");
 		return array;
 
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get a byte array: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -682,7 +701,7 @@ JNIEXPORT jfloat JNICALL Java_com_snappydb_internal_DBImpl__1_1getFloat(JNIEnv *
 	LOGI("Getting a float");
 
 	if (!isDBopen) {
-		throwException(env, "database is not open");
+		throwGenericSnappyDbException(env, "database is not open");
 		return NULL;
 	}
 
@@ -696,10 +715,12 @@ JNIEXPORT jfloat JNICALL Java_com_snappydb_internal_DBImpl__1_1getFloat(JNIEnv *
 			LOGI("Successfully reading a float");
 			float f = atof(data.c_str());
 			return f;
-
+	} else if (status.IsNotFound()) {
+		throwKeyNotFoundException(env, key);
+		return NULL;
 	} else {
 		std::string err("Failed to get a float: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -715,7 +736,7 @@ JNIEXPORT jboolean JNICALL Java_com_snappydb_internal_DBImpl__1_1exists
 	LOGI("does key exists");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -735,7 +756,7 @@ JNIEXPORT jboolean JNICALL Java_com_snappydb_internal_DBImpl__1_1exists
 
 	} else {
 		std::string err("Failed to check if a key exists: " + status.ToString());
-		throwException(env, err.c_str());
+		throwGenericSnappyDbException(env, err.c_str());
 		return NULL;
 	}
 }
@@ -747,7 +768,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_snappydb_internal_DBImpl__1_1findKeys
 	LOGI("find keys");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -789,7 +810,7 @@ JNIEXPORT jint JNICALL Java_com_snappydb_internal_DBImpl__1_1countKeys
 	LOGI("count keys");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -815,7 +836,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_snappydb_internal_DBImpl__1_1findKeysBet
 	LOGI("find keys between range");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -859,7 +880,7 @@ JNIEXPORT jint JNICALL Java_com_snappydb_internal_DBImpl__1_1countKeysBetween
 	LOGI("count keys between range");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -887,7 +908,7 @@ JNIEXPORT jlong JNICALL Java_com_snappydb_internal_DBImpl__1_1findKeysIterator
 	LOGI("find keys iterator");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -928,7 +949,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_snappydb_internal_DBImpl__1_1iteratorNex
 	LOGI("iterator next array");
 
 	if (!isDBopen) {
-		throwException (env, "database is not open");
+		throwGenericSnappyDbException (env, "database is not open");
 		return NULL;
 	}
 
@@ -936,7 +957,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_snappydb_internal_DBImpl__1_1iteratorNex
 	leveldb::Iterator* it = (leveldb::Iterator*) ptr;
 
 	if (!it->Valid()) {
-		throwException (env, "iterator is not valid");
+		throwGenericSnappyDbException (env, "iterator is not valid");
 		return NULL;
 	}
 
